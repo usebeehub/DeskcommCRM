@@ -127,6 +127,32 @@ describe("criarContaDeConvite", () => {
     });
   });
 
+  it("com captcha: o token vai no reenvio, que é a chamada pública deste caminho", async () => {
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-3" } }, error: null });
+    admin.resend.mockResolvedValue({ error: null });
+
+    await (await convite()).criarContaDeConvite({ ...entrada, captchaToken: "tok-convite" });
+
+    expect(admin.resend).toHaveBeenCalledWith({
+      type: "signup",
+      email: entrada.email,
+      options: { emailRedirectTo: entrada.emailRedirectTo, captchaToken: "tok-convite" },
+    });
+  });
+
+  it("captcha recusado no reenvio → APAGA a conta e devolve `captcha_recusado`", async () => {
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-4" } }, error: null });
+    admin.resend.mockResolvedValue({
+      error: { message: "captcha protection: request disallowed", status: 400, code: "captcha_failed" },
+    });
+    admin.deleteUser.mockResolvedValue({ error: null });
+
+    const r = await (await convite()).criarContaDeConvite({ ...entrada, captchaToken: "tok-vencido" });
+
+    expect(r).toEqual({ ok: false, motivo: "captcha_recusado" });
+    expect(admin.deleteUser).toHaveBeenCalledWith("u-4");
+  });
+
   it("conta já existe → `conta_ja_existe` (não é falha de infra)", async () => {
     admin.createUser.mockResolvedValue({
       data: null,

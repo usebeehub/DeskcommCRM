@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { createClient } from "@/lib/supabase/server";
+import { chaveDoCaptcha } from "@/lib/auth/captcha";
 import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -25,7 +26,7 @@ export default async function ForgotPasswordPage() {
           {t("Informe seu e-mail e enviaremos um link de redefinição")}
         </p>
       </div>
-      <ForgotPasswordForm />
+      <ForgotPasswordForm captchaChave={chaveDoCaptcha()} />
       <p className="text-center text-sm text-muted-foreground">
         {t("Lembrou a senha?")}{" "}
         <Link href="/login" className="font-medium text-foreground underline underline-offset-4">

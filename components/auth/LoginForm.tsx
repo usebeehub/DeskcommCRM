@@ -12,13 +12,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signInWithPassword } from "@/app/actions/auth/signInWithPassword";
 import { Eye, EyeSlash } from "@/lib/ui/icons";
+import { Captcha } from "@/components/auth/Captcha";
 
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({
+  next,
+  captchaChave,
+}: {
+  next?: string;
+  /** Chave pública do captcha; `null`/ausente = instalação sem captcha. */
+  captchaChave?: string | null;
+}) {
   const t = useT();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [rodadaDoCaptcha, setRodadaDoCaptcha] = useState(0);
 
   const {
     register,
@@ -31,10 +41,17 @@ export function LoginForm({ next }: { next?: string }) {
 
   const onSubmit = (values: LoginInput) => {
     setServerError(null);
+    if (captchaChave && !captchaToken) {
+      setServerError(t("Aguarde a verificação de segurança terminar e tente de novo."));
+      return;
+    }
     startTransition(async () => {
       // Server Action redirects on success — no return value reaches here.
       // On failure, an error discriminator is returned and rendered inline.
-      const res = await signInWithPassword(values, next);
+      const res = await signInWithPassword(values, next, captchaToken ?? undefined);
+      // O token foi gasto nesta chamada; a próxima tentativa precisa de outro.
+      setCaptchaToken(null);
+      setRodadaDoCaptcha((n) => n + 1);
       if (!res) {
         // Should be unreachable (redirect throws), but guard anyway.
         router.replace(next || "/app");
@@ -47,7 +64,11 @@ export function LoginForm({ next }: { next?: string }) {
         router.replace(`/login/mfa${params.toString() ? `?${params}` : ""}`);
         return;
       }
-      if (res.error === "invalid_credentials") {
+      if (res.error === "captcha_failed") {
+        setServerError(
+          t("A verificação de segurança expirou. Confirme de novo e tente outra vez."),
+        );
+      } else if (res.error === "invalid_credentials") {
         setServerError(t("Email ou senha incorretos."));
       } else if (res.error === "rate_limited") {
         setServerError(t("Muitas tentativas. Aguarde alguns minutos."));
@@ -101,6 +122,9 @@ export function LoginForm({ next }: { next?: string }) {
           <p className="text-xs text-destructive">{t(errors.password.message ?? "")}</p>
         )}
       </div>
+      {captchaChave && (
+        <Captcha key={rodadaDoCaptcha} chave={captchaChave} onToken={setCaptchaToken} />
+      )}
       {serverError && (
         <div
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"

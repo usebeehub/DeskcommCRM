@@ -8,6 +8,7 @@ import { safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 import { loginSchema, type LoginInput } from "@/lib/auth/schemas";
 import { audit, hashEmail } from "@/lib/audit";
+import { comCaptcha, ehRecusaDeCaptcha } from "@/lib/auth/captcha";
 import {
   authRateLimited,
   contaBloqueadaPorFalhas,
@@ -17,7 +18,8 @@ import {
 
 export type SignInResult = {
   ok: false;
-  error: "invalid_credentials" | "rate_limited" | "validation_error" | "mfa_required";
+  error:
+    "invalid_credentials" | "rate_limited" | "validation_error" | "mfa_required" | "captcha_failed";
   details?: Record<string, unknown>;
   challengeId?: string;
 };
@@ -32,7 +34,12 @@ export type SignInResult = {
  *
  * On failure: returns an error discriminator. Caller renders inline message.
  */
-export async function signInWithPassword(input: LoginInput, next?: string): Promise<SignInResult> {
+export async function signInWithPassword(
+  input: LoginInput,
+  next?: string,
+  /** Token do widget de captcha, quando a instalação tem um (`lib/auth/captcha.ts`). */
+  captchaToken?: string,
+): Promise<SignInResult> {
   const parsed = loginSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -65,10 +72,25 @@ export async function signInWithPassword(input: LoginInput, next?: string): Prom
     return { ok: false, error: "rate_limited" };
   }
 
+  const opcoes = comCaptcha({}, captchaToken);
   const { data, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
+    ...(Object.keys(opcoes).length > 0 ? { options: opcoes } : {}),
   });
+
+  // Captcha recusado não é senha errada: não gasta o orçamento da conta, senão
+  // um token vencido na tela bloquearia o dono da conta junto com o robô.
+  if (error && ehRecusaDeCaptcha(error)) {
+    await audit({
+      action: "auth.login_failed",
+      metadata: { email_hash: hashEmail(parsed.data.email), reason: "captcha_failed" },
+      requestId,
+      ip,
+      userAgent,
+    });
+    return { ok: false, error: "captcha_failed" };
+  }
 
   if (error || !data.user) {
     // Só senha errada gasta o orçamento da conta.

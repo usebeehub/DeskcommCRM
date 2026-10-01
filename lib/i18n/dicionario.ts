@@ -8631,6 +8631,15 @@ export const DICIONARIO: Traducoes = {
   "Muitas tentativas. Aguarde alguns minutos.": {
     es: "Demasiados intentos. Espera unos minutos.",
   },
+  "Aguarde a verificação de segurança terminar e tente de novo.": {
+    es: "Espera a que termine la verificación de seguridad e inténtalo de nuevo.",
+  },
+  "A verificação de segurança expirou. Confirme de novo e tente outra vez.": {
+    es: "La verificación de seguridad caducó. Confírmala de nuevo e inténtalo otra vez.",
+  },
+  "Não foi possível carregar a verificação de segurança. Recarregue a página.": {
+    es: "No se pudo cargar la verificación de seguridad. Recarga la página.",
+  },
   "Não tem conta?": { es: "¿No tienes cuenta?" },
   "Recuperar senha": { es: "Recuperar contraseña" },
   "Informe seu e-mail e enviaremos um link de redefinição": {

@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { signUp } from "@/app/actions/auth/signUp";
 import { Eye, EyeSlash } from "@/lib/ui/icons";
 import { PasswordStrength } from "@/components/auth/PasswordStrength";
+import { Captcha } from "@/components/auth/Captcha";
 
 /**
  * Convite em curso: a conta está sendo criada para ACEITAR um convite, não para
@@ -31,7 +32,14 @@ export interface ConviteDoSignup {
   email: string;
 }
 
-export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
+export function SignupForm({
+  convite,
+  captchaChave,
+}: {
+  convite?: ConviteDoSignup;
+  /** Chave pública do captcha; `null`/ausente = instalação sem captcha. */
+  captchaChave?: string | null;
+}) {
   const t = useT();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -40,6 +48,8 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [rodadaDoCaptcha, setRodadaDoCaptcha] = useState(0);
 
   const {
     register,
@@ -69,6 +79,10 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
 
   const onSubmit = (values: SignupInput & { full_name: string }) => {
     setServerError(null);
+    if (captchaChave && !captchaToken) {
+      setServerError(t("Aguarde a verificação de segurança terminar e tente de novo."));
+      return;
+    }
     startTransition(async () => {
       // No modo convite o e-mail do formulário é readonly, e readonly no
       // cliente não vale nada: quem confere de novo é o servidor.
@@ -80,7 +94,7 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
             password_confirm: values.password_confirm,
           }
         : values;
-      const res = await signUp(entrada, convite?.token);
+      const res = await signUp(entrada, convite?.token, captchaToken ?? undefined);
       if (res.ok) {
         /**
          * ⚠️ O PROVEDOR JÁ DEIXOU A PESSOA ENTRAR — não existe e-mail para ela
@@ -107,7 +121,14 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
         setSentTo(values.email);
         return;
       }
-      if (res.error === "rate_limited") {
+      // O token foi gasto nesta chamada; a próxima tentativa precisa de outro.
+      setCaptchaToken(null);
+      setRodadaDoCaptcha((n) => n + 1);
+      if (res.error === "captcha_failed") {
+        setServerError(
+          t("A verificação de segurança expirou. Confirme de novo e tente outra vez."),
+        );
+      } else if (res.error === "rate_limited") {
         setServerError(t("Muitas tentativas. Aguarde alguns minutos."));
       } else if (res.error === "validation_error") {
         setServerError(t("Dados inválidos. Confira os campos."));
@@ -277,6 +298,9 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
           <p className="text-xs text-destructive">{t(errors.password_confirm.message ?? "")}</p>
         )}
       </div>
+      {captchaChave && (
+        <Captcha key={rodadaDoCaptcha} chave={captchaChave} onToken={setCaptchaToken} />
+      )}
       {serverError && (
         <div
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"

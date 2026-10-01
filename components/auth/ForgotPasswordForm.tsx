@@ -10,12 +10,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requestPasswordReset } from "@/app/actions/auth/requestPasswordReset";
+import { Captcha } from "@/components/auth/Captcha";
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({
+  captchaChave,
+}: {
+  /** Chave pública do captcha; `null`/ausente = instalação sem captcha. */
+  captchaChave?: string | null;
+} = {}) {
   const t = useT();
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [rodadaDoCaptcha, setRodadaDoCaptcha] = useState(0);
 
   const {
     register,
@@ -28,13 +36,22 @@ export function ForgotPasswordForm() {
 
   const onSubmit = (values: ForgotPasswordInput) => {
     setServerError(null);
+    if (captchaChave && !captchaToken) {
+      setServerError(t("Aguarde a verificação de segurança terminar e tente de novo."));
+      return;
+    }
     startTransition(async () => {
-      const res = await requestPasswordReset(values);
+      const res = await requestPasswordReset(values, captchaToken ?? undefined);
       if (res.ok) {
         setSent(true);
         return;
       }
-      if (res.error === "rate_limited") {
+      // O token foi gasto nesta chamada; a próxima tentativa precisa de outro.
+      setCaptchaToken(null);
+      setRodadaDoCaptcha((n) => n + 1);
+      if (res.error === "captcha_failed") {
+        setServerError(t("A verificação de segurança expirou. Confirme de novo e tente outra vez."));
+      } else if (res.error === "rate_limited") {
         setServerError(t("Muitas tentativas. Aguarde alguns minutos."));
       } else if (res.error === "validation_error") {
         setServerError(t("Email inválido. Confira o campo."));
@@ -74,6 +91,9 @@ export function ForgotPasswordForm() {
           <p className="text-xs text-destructive">{t(errors.email.message ?? "")}</p>
         )}
       </div>
+      {captchaChave && (
+        <Captcha key={rodadaDoCaptcha} chave={captchaChave} onToken={setCaptchaToken} />
+      )}
       {serverError && (
         <div
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"

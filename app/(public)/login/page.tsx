@@ -4,6 +4,7 @@ import { EntrarComGoogle } from "@/components/auth/EntrarComGoogle";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { branding } from "@/lib/branding";
 import { createClient } from "@/lib/supabase/server";
+import { chaveDoCaptcha } from "@/lib/auth/captcha";
 import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -138,7 +139,7 @@ export default async function LoginPage({
           )}
         </div>
       )}
-      <LoginForm next={next} />
+      <LoginForm next={next} captchaChave={chaveDoCaptcha()} />
       <EntrarComGoogle next={next} />
       <div className="space-y-2 text-center text-sm">
         <p>

@@ -7,6 +7,7 @@ import { branding } from "@/lib/branding";
 import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
 import { createClient } from "@/lib/supabase/server";
+import { chaveDoCaptcha } from "@/lib/auth/captcha";
 import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -108,7 +109,7 @@ export default async function SignupPage({
         </p>
       )}
 
-      <SignupForm convite={convite} />
+      <SignupForm convite={convite} captchaChave={chaveDoCaptcha()} />
       {/* O convite atravessa o Google na URL de retorno: sem ele, quem foi
           convidado e cria a conta com Google ganharia uma empresa própria. */}
       <EntrarComGoogle convite={convite?.token} />

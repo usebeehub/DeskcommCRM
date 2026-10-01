@@ -42,6 +42,7 @@
  * ASSINADO já autorizou, e devolve. É o mesmo uso que `lib/auth/provision.ts`
  * faz (`auth.admin.createUser`), e o que a própria issue sugere.
  */
+import { comCaptcha, ehRecusaDeCaptcha } from "@/lib/auth/captcha";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -93,7 +94,12 @@ export type ResultadoDaContaDeConvite =
        * convite na mão, então não fura a anti-enumeração — o comentário disso
        * está em `signUp.ts`). Os outros três são falha de infraestrutura.
        */
-      motivo: "conta_ja_existe" | "rate_limited" | "criacao_recusada" | "email_de_confirmacao_falhou";
+      motivo:
+        | "conta_ja_existe"
+        | "rate_limited"
+        | "criacao_recusada"
+        | "email_de_confirmacao_falhou"
+        | "captcha_recusado";
       detalhe?: string;
     };
 
@@ -123,6 +129,12 @@ export async function criarContaDeConvite(params: {
   inviteToken: string;
   fullName: string;
   emailRedirectTo: string;
+  /**
+   * O `/resend` é público e o captcha do GoTrue cobre ele também: o token que
+   * o formulário de cadastro trouxe é gasto AQUI, que é a única chamada pública
+   * deste caminho (o `createUser` é admin e não passa por captcha).
+   */
+  captchaToken?: string;
 }): Promise<ResultadoDaContaDeConvite> {
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.createUser({
@@ -150,7 +162,7 @@ export async function criarContaDeConvite(params: {
   const { error: erroResend } = await supabase.auth.resend({
     type: "signup",
     email: params.email,
-    options: { emailRedirectTo: params.emailRedirectTo },
+    options: comCaptcha({ emailRedirectTo: params.emailRedirectTo }, params.captchaToken),
   });
 
   if (erroResend) {
@@ -164,6 +176,7 @@ export async function criarContaDeConvite(params: {
         detalhe: erroDelete.message,
       });
     }
+    if (ehRecusaDeCaptcha(erroResend)) return { ok: false, motivo: "captcha_recusado" };
     return {
       ok: false,
       motivo: "email_de_confirmacao_falhou",

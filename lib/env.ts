@@ -560,6 +560,17 @@ const schema = z.object({
   SIGNUP_MODE: z.string().optional().default(""),
 
   /**
+   * Chave PÚBLICA do widget de captcha (Cloudflare Turnstile) do login, do
+   * cadastro e do "esqueci a senha". Vazia = sem captcha, como sempre foi.
+   *
+   * Runtime, e não `NEXT_PUBLIC_*`: a imagem é uma só para todas as
+   * instalações, e `NEXT_PUBLIC_*` congela no build. A chave SECRETA não entra
+   * aqui — ela vive no provedor de auth (Supabase › Attack Protection), que é
+   * quem valida o token. Ordem de ligar e porquê: `lib/auth/captcha.ts`.
+   */
+  TURNSTILE_SITE_KEY: z.string().optional().default(""),
+
+  /**
    * Par VAPID do Web Push. Opcionais: sem elas a bandeja só funciona com a aba
    * viva (Notification API + SW local). Gerar: `npx web-push generate-vapid-keys`.
    */

@@ -808,6 +808,12 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "FORNECEDOR",
     motivo: "endpoint oficial da Google Data Manager API: recebe conversões e consulta o processamento na conta autorizada pela própria organização. O destino pertence ao fornecedor e não à instalação do CRM.",
   },
+  // ── captcha opcional do login (lib/auth/captcha.ts) ──
+  "challenges.cloudflare.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "script do widget de captcha (Cloudflare Turnstile) que `components/auth/Captcha.tsx` carrega no login, no cadastro e no \"esqueci a senha\" — e só quando a instalação declara `TURNSTILE_SITE_KEY`. É o destino do request; quem valida o token é o provedor de auth, com a chave secreta da própria instalação. Trocar pelo domínio do revendedor faria o widget não carregar.",
+  },
   // ── localização compartilhada: o link que abre o pino do cliente ──
   "maps.google.com": {
     categoria: "PLATAFORMA",

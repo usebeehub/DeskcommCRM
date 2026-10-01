@@ -13,6 +13,7 @@ import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { criarContaDeConvite, lerConfigPublicaDoGoTrue } from "@/lib/auth/convite-no-gotrue";
 import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
 import { audit, hashEmail } from "@/lib/audit";
+import { comCaptcha, ehRecusaDeCaptcha } from "@/lib/auth/captcha";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { env } from "@/lib/env";
 
@@ -55,7 +56,8 @@ export type SignUpResult =
         | "rate_limited"
         | "signup_failed"
         | "somente_convite"
-        | "conta_ja_existe";
+        | "conta_ja_existe"
+        | "captcha_failed";
       details?: Record<string, unknown>;
     };
 
@@ -78,6 +80,8 @@ export async function signUp(
    * token com o e-mail que o provedor de auth confirmou.
    */
   inviteToken?: string,
+  /** Token do widget de captcha, quando a instalação tem um (`lib/auth/captcha.ts`). */
+  captchaToken?: string,
 ): Promise<SignUpResult> {
   const temConvite = typeof inviteToken === "string" && inviteToken.trim() !== "";
   const parsed = temConvite
@@ -153,6 +157,7 @@ export async function signUp(
       inviteToken: convite,
       fullName: (parsed.data as SignupComConviteInput).full_name,
       emailRedirectTo: `${origin}/auth/confirm?type=signup`,
+      captchaToken,
     });
 
     if (!criada.ok) {
@@ -173,6 +178,7 @@ export async function signUp(
       });
       if (criada.motivo === "conta_ja_existe") return { ok: false, error: "conta_ja_existe" };
       if (criada.motivo === "rate_limited") return { ok: false, error: "rate_limited" };
+      if (criada.motivo === "captcha_recusado") return { ok: false, error: "captcha_failed" };
       return { ok: false, error: "signup_failed" };
     }
 
@@ -190,7 +196,7 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: {
+    options: comCaptcha({
       // Ver comentário equivalente em requestPasswordReset.ts: ?type=signup
       // sobrevive ao redirect do GoTrue e é o que distingue este fluxo do de
       // recovery quando a verificação chega via `code` (PKCE), não `token_hash`.
@@ -208,11 +214,12 @@ export async function signUp(
             full_name: (parsed.data as SignupComConviteInput).full_name,
           }
         : { org_name: (parsed.data as SignupInput).org_name },
-    },
+    }, captchaToken),
   });
 
   if (error) {
     if (error.status === 429) return { ok: false, error: "rate_limited" };
+    if (ehRecusaDeCaptcha(error)) return { ok: false, error: "captcha_failed" };
 
     // ── O BECO SEM SAÍDA DE QUEM JÁ TEM CONTA ────────────────────────────
     //
