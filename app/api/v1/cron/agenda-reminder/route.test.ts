@@ -23,7 +23,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { degrausPendentes, estaNaHora, montarLembrete } from "./route";
+import { degrausPendentes, escolherCanalDoLembrete, estaNaHora, montarLembrete } from "./route";
 
 const MIN = 60_000;
 
@@ -150,6 +150,67 @@ describe("montarLembrete", () => {
   });
 });
 
+describe("escolherCanalDoLembrete — de qual número o lembrete sai", () => {
+  // Organização com dois números (ex.: uma clínica com duas unidades). O
+  // paciente conversa com o número da unidade dele; o lembrete tem de sair por
+  // esse número, senão chega de um número estranho e a resposta cai na fila da
+  // outra unidade.
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+
+  it("sai pelo número da conversa mais recente do contato", () => {
+    const canal = escolherCanalDoLembrete(
+      [
+        { channel_session_id: A, last_message_at: "2026-10-01T10:00:00Z" },
+        { channel_session_id: B, last_message_at: "2026-10-02T10:00:00Z" },
+      ],
+      [A, B],
+    );
+    expect(canal).toBe(B);
+  });
+
+  it("pula a conversa cujo número não está conectado", () => {
+    const canal = escolherCanalDoLembrete(
+      [
+        { channel_session_id: B, last_message_at: "2026-10-02T10:00:00Z" },
+        { channel_session_id: A, last_message_at: "2026-10-01T10:00:00Z" },
+      ],
+      [A],
+    );
+    expect(canal).toBe(A);
+  });
+
+  it("ignora conversa em grupo", () => {
+    const canal = escolherCanalDoLembrete(
+      [
+        { channel_session_id: B, last_message_at: "2026-10-02T10:00:00Z", is_group: true },
+        { channel_session_id: A, last_message_at: "2026-10-01T10:00:00Z", is_group: false },
+      ],
+      [A, B],
+    );
+    expect(canal).toBe(A);
+  });
+
+  it("conversa sem data fica atrás das que têm", () => {
+    const canal = escolherCanalDoLembrete(
+      [
+        { channel_session_id: B, last_message_at: null },
+        { channel_session_id: A, last_message_at: "2026-09-01T10:00:00Z" },
+      ],
+      [A, B],
+    );
+    expect(canal).toBe(A);
+  });
+
+  it("contato sem conversa cai no primeiro número conectado (o comportamento de antes)", () => {
+    expect(escolherCanalDoLembrete([], [A, B])).toBe(A);
+  });
+
+  it("sem número conectado não escolhe nada", () => {
+    expect(escolherCanalDoLembrete([{ channel_session_id: A, last_message_at: null }], [])).toBeNull();
+  });
+});
+
 describe("isolamento entre organizações (estrutural)", () => {
   const fonte = readFileSync(join(__dirname, "route.ts"), "utf8");
 
@@ -166,6 +227,12 @@ describe("isolamento entre organizações (estrutural)", () => {
     const buscaDeCanal = fonte.slice(fonte.indexOf('.from("channel_sessions")'));
     expect(fonte).toContain('.from("channel_sessions")');
     expect(buscaDeCanal.slice(0, 400)).toContain('.eq("organization_id", org)');
+  });
+
+  it("lê as conversas do contato DENTRO da organização do compromisso", () => {
+    const buscaDeConversa = fonte.slice(fonte.indexOf('.from("conversations")'));
+    expect(fonte).toContain('.from("conversations")');
+    expect(buscaDeConversa.slice(0, 400)).toContain('.eq("organization_id", org)');
   });
 
   it("carimba o compromisso DENTRO da organização dele", () => {

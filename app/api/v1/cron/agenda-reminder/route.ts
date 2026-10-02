@@ -455,6 +455,38 @@ export function degrausPendentes(input: {
     .sort((a, b) => b - a);
 }
 
+export interface ConversaDoContato {
+  channel_session_id: string;
+  last_message_at: string | null;
+  is_group?: boolean | null;
+}
+
+/**
+ * DE QUAL NÚMERO o lembrete sai.
+ *
+ * Antes era "o primeiro número conectado da organização", sem ordem. Com um
+ * número só, dá no mesmo. Com dois (uma clínica com duas unidades, cada uma com
+ * o seu WhatsApp), o paciente que conversa com a unidade B recebia o lembrete
+ * pelo número da unidade A: estranha o remetente, e a resposta dele cai na fila
+ * da unidade errada.
+ *
+ * A regra: o número da conversa mais recente do contato que ainda esteja
+ * conectado (grupo não conta). Sem conversa com número conectado, o primeiro
+ * número conectado, que é o comportamento de antes.
+ */
+export function escolherCanalDoLembrete(
+  conversas: ConversaDoContato[],
+  conectados: string[],
+): string | null {
+  if (conectados.length === 0) return null;
+  const ativos = new Set(conectados);
+  const quando = (c: ConversaDoContato) => (c.last_message_at ? Date.parse(c.last_message_at) : -Infinity);
+  const candidata = conversas
+    .filter((c) => !c.is_group && ativos.has(c.channel_session_id))
+    .sort((a, b) => quando(b) - quando(a))[0];
+  return candidata?.channel_session_id ?? conectados[0]!;
+}
+
 async function handle(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
 
@@ -572,18 +604,34 @@ async function handle(req: NextRequest): Promise<Response> {
       continue;
     }
 
-    const { data: canal } = await admin
+    // Os números conectados, em ordem estável: o primeiro é o de sempre (quem
+    // conectou antes), e só vale quando o contato nunca conversou.
+    const { data: sessoes } = await admin
       .from("channel_sessions")
       .select("id")
       .eq("organization_id", org)
       .eq("status", "WORKING")
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: true });
 
-    if (!canal) {
+    // Com mais de um número, o lembrete sai pelo número em que o contato
+    // conversou por último — ver `escolherCanalDoLembrete`.
+    const { data: conversas } = await admin
+      .from("conversations")
+      .select("channel_session_id, last_message_at, is_group")
+      .eq("organization_id", org)
+      .eq("contact_id", contato.id)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(20);
+
+    const canalId = escolherCanalDoLembrete(
+      (conversas ?? []) as ConversaDoContato[],
+      (sessoes ?? []).map((s: { id: string }) => s.id),
+    );
+    if (!canalId) {
       pular("sem_canal");
       continue;
     }
+    const canal = { id: canalId };
 
     const foraDaJanela = await adiarAteAJanelaAbrir(admin, org, canal.id);
     if (foraDaJanela) {
