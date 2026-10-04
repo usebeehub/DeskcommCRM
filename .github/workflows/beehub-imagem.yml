@@ -31,5 +31,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/usebeehub/deskcommcrm:1.70.0-lembrete
+          # Liga o pacote ao repositório público: a VPS puxa sem login.
+          labels: |
+            org.opencontainers.image.source=https://github.com/usebeehub/DeskcommCRM
           build-args: |
             APP_VERSION=1.70.0
