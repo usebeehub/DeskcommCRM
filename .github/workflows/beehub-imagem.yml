@@ -1,0 +1,38 @@
+name: Imagem da BeeHub (1.73.0 + lembrete)
+
+# Imagem só do app, para a produção da BeeHub enquanto o PR do lembrete não
+# entra no upstream. Sai em ghcr.io/usebeehub/deskcommcrm:1.73.0-lembrete.
+# Ao atualizar pelo update.sh ou pela tela, o APP_IMAGE volta para a imagem do upstream.
+on:
+  push:
+    branches: ["beehub/v1.73.0-lembrete"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  app:
+    if: github.repository_owner == 'usebeehub'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/usebeehub/deskcommcrm:1.73.0-lembrete
+          # Liga o pacote ao repositório público: a VPS puxa sem login.
+          labels: |
+            org.opencontainers.image.source=https://github.com/usebeehub/DeskcommCRM
+          build-args: |
+            APP_VERSION=1.73.0
